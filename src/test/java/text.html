@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
+      integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+<meta charset="UTF-8"/>
+<style type="text/css">
+    .box1 {
+        width: 49%;
+        height: 500px;
+    }
+
+    .tbox {
+        width: 90%;
+        height: 500px;
+    }
+
+    body {
+        overflow: scroll;
+        overflow-x: hidden;
+        overflow-y: hidden;
+    }
+</style>
+
+<body style="padding:5px 5px;">
+<div style="margin:5px 20px;">
+    <input id="btnClear" type="button" value="提取SQL"/>
+    <input id="dictNum" type="text" style="margin-left: 50px;width: 80px" placeholder="字典值个数"/>
+    <input id="btnDictTemplate" type="button" value="生成字典模板" style="margin-left: 5px"/>
+    <input id="btnDictSQL" type="button" value="生成字典SQL" style="margin-left: 5px"/>
+    <input id="btnReset" type="button" value="重置" style="margin-left: 50px"/>
+</div>
+<div style="margin:5px 20px;">
+    <label>指标添加</label>
+    <input id="kpiNum" type="text" style="margin-left: 65px;width: 70px" placeholder="指标个数"/>
+    <input id="isAlgorithm" type="text" style="margin-left: 10px;width: 200px" placeholder="指定算法模板ID，默认为新增"/>
+    <input id="isSource" type="text" style="margin-left: 10px;width: 170px" placeholder="指定源表ID，默认为新增"/>
+    <input id="isModule" type="text" style="margin-left: 10px;width: 170px" placeholder="指定模块ID，默认为新增"/>
+    <input id="btnKpiTemplate" type="button" value="生成指标模板" style="margin-left: 5px"/>
+    <input id="btnKpiSQL" type="button" value="生成指标SQL" style="margin-left: 5px"/>
+</div>
+<div class="row" style="margin:10px 5px;">
+    <div style="float: left;" class="box1">
+        <textarea id="txtOrigin" class="tbox" style="margin-left: 10px;"></textarea>
+    </div>
+    <div style="float: left;width: 20px;margin-left:-20px;height:560px;font-weight: bold;">>>>></div>
+    <div style="float: right;" class="box1"><textarea id="txtNew" class="tbox"></textarea></div>
+
+</div>
+</body>
+
+</html>
+<script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script type="text/javascript">
+
+    $(document).ready(function () {
+        $("#btnClear").click(function () {
+            $vNewTxt = $("#txtOrigin").val();
+            let s2 = "";
+            //按照行数来遍历
+            let array = $vNewTxt.split("\n");
+            for (let i = 0; i < array.length; i++) {
+                let curLineStr = array[i];
+                let curLineSql = "";
+                let matchQuote = 0;//双引号匹配
+                for (let j = 0; j < curLineStr.length; j++) {
+                    //游离于引号之外的字符，不作处理
+                    if (matchQuote % 2 === 0 && curLineStr.charAt(j) !== '\"') {
+                    } else {
+                        switch (curLineStr.charAt(j)) {
+                            case '\"':
+                                matchQuote++;
+                                break;
+                            case '\\':
+                                //转义处理
+                                switch (curLineStr.charAt(j + 1)) {
+                                    case 'n':
+                                        curLineSql += String.fromCharCode(10);
+                                        break;
+                                    case 't':
+                                        curLineSql += String.fromCharCode(9);
+                                        break;
+                                    case '\'':
+                                        curLineSql += String.fromCharCode(39);
+                                    case '\"':
+                                        curLineSql += String.fromCharCode(34);
+                                }
+                                j++;
+                                break;
+                            default:
+                                curLineSql += curLineStr.charAt(j);
+                        }
+                    }
+                }
+                //提取注释
+                let comment = !curLineStr.includes("//") ? "" :
+                    curLineStr.match(/\/\/.*/g)[0].replace("//", " -- ");
+                //处理jpa参数
+                if (curLineSql !== "") {
+                    if (!curLineSql.includes(" ")) {
+                        curLineSql = "";
+                    }
+                    if (curLineSql.includes(":")) {
+                        curLineSql = curLineSql.replace(/:[a-zA-Z0-9]*([ |)])/g, "\"\"$1");
+                    }
+                }
+                s2 += curLineSql + comment;
+                if (curLineSql + comment !== "") {
+                    s2 += String.fromCharCode(10);
+                }
+            }
+            $("#txtNew").text(s2);
+        });
+        $("#btnReset").click(function () {
+            $("#txtOrigin").val("");
+            $("#txtNew").val("");
+            window.location.reload();
+        });
+        $("#btnDictTemplate").click(function () {
+            let s3 = "";
+            let dictNum = parseInt($("#dictNum").val());
+            s3 += "dictName = \"\"\n";
+            for (let i = 0; i < dictNum; i++) {
+                s3 += "dictValue{0} = \"\", code = \"{0}\", dictLevel = \"2\"".format(i + 1);
+                if (i + 1 !== dictNum) s3 += "\n";
+            }
+            $("#txtOrigin").text(s3);
+        })
+        $("#btnDictSQL").click(function () {
+            let templateSql = $("#txtOrigin").val().split("\n");
+            let s4 = "";
+            let uuidParent = crypto.randomUUID().toString().replaceAll("-", "");
+            for (let i = 0; i < templateSql.length; i++) {
+                let curLine = templateSql[i];
+                let tmp = "";
+                if (i === 0) {
+                    let $1 = curLine.match(/"(.*)"/g).toString().replaceAll("\"", "");
+                    tmp += "-- " + $1 + "\n";
+                    tmp += "delete from t_sys_dict where category_id = '{0}';\n".format(uuidParent);
+                    tmp += "INSERT INTO `t_sys_dict`(`ID`, `PARENT_ID`, `CATEGORY_ID`, `CODE`, `NAME`, `M_LEVEL`, `SORT`, `IS_SYSTEM`, `CREATE_BY`, `CREATE_TIME`, `LAST_MODIFY_BY`, `LAST_MODIFY_TIME`) " +
+                        "VALUES ('{0}', null, '{0}', 0, '{1}', 1, 0, 0, '297eff0f4f6d13f8014f6d17e9fc0002', now(), '297eff0f4f6d13f8014f6d17e9fc0002', now());\n"
+                    tmp = tmp.format(uuidParent, $1);
+                } else {
+                    let uuid = crypto.randomUUID().toString().replaceAll("-", "");
+                    let dictValue = curLine.match(/".*?"/g)[0].replaceAll("\"", "");
+                    let code = curLine.match(/".*?"/g)[1].replaceAll("\"", "");
+                    let dictLevel = curLine.match(/".*?"/g)[2].replaceAll("\"", "");
+                    tmp += "INSERT INTO `t_sys_dict`(`ID`, `PARENT_ID`, `CATEGORY_ID`, `CODE`, `NAME`, `M_LEVEL`, `SORT`, `IS_SYSTEM`, `CREATE_BY`, `CREATE_TIME`, `LAST_MODIFY_BY`, `LAST_MODIFY_TIME`) " +
+                        "VALUES ('{0}', '{1}', '{1}', {2}, '{3}', {4}, {2}, 0, '297eff0f4f6d13f8014f6d17e9fc0002', now(), '297eff0f4f6d13f8014f6d17e9fc0002', now());\n";
+                    tmp = tmp.format(uuid, uuidParent, code, dictValue, dictLevel);
+                }
+                s4 += tmp;
+            }
+            s4 += "select * from t_sys_dict where category_id = '{0}';".format(uuidParent);
+            $("#txtNew").text(s4);
+
+        })
+        let sourceId = "";
+        let algorithmId = "";
+        let moduleId = "";
+        $("#btnKpiTemplate").click(function (){
+            let kpiNum = parseInt($("#kpiNum").val());
+            let isAlgorithm = $("#isAlgorithm").val();
+            let isSource = $("#isSource").val();
+            let isModule = $("#isModule").val();
+            let kpiIdStr = "";
+            if (isSource === "") {
+                sourceId = crypto.randomUUID().toString().replaceAll("-", "");
+                kpiIdStr += "source_name = \"\", 库名 = \"gd_jk_hs\", 表名 = \"\"";
+                kpiIdStr += '\n';
+            }else {
+                sourceId = isSource;
+            }
+            if (isModule === "") {
+                moduleId = crypto.randomUUID().toString().replaceAll("-", "");
+                kpiIdStr += "模块名字 = \"\"";
+                kpiIdStr += '\n';
+            }else {
+                moduleId = isModule;
+            }
+            if (isAlgorithm === "") {
+                algorithmId = crypto.randomUUID().toString().replaceAll("-", "");
+                kpiIdStr += "算法名 = \"\", 模板sql = \"\", 模板down_sql = \"\"";
+                kpiIdStr += '\n';
+            }else {
+                algorithmId = isAlgorithm;
+            }
+            for (let i = 0; i < kpiNum; i++) {
+                if (i === 0) {
+                    kpiIdStr += "----------------------------------------------------------------------------------------\n";
+                }
+                let curLineStr =  "指标ID_{0} = \"\", 指标名 = \"\", 基准值 = \"\", 挑战值 = \"\", 最大值 = \"\", 最小值 = \"\", " +
+                    "精度 = \"\", 单位 = \"\", 算法描述 = \"\", sql = \"\", down_sql = \"\", 算法模板ID = \"\", 默认值 = \"\"";
+                kpiIdStr += curLineStr.format(i + 1);
+                kpiIdStr += '\n\n';
+            }
+            $("#txtOrigin").text(kpiIdStr);
+        })
+        $("#btnKpiSQL").click(function (){
+            let templateKpi = $("#txtOrigin").val().split("\n");
+            let sql = "";
+            //t_kpi
+            sql += "delete from t_kpi where id in ('GOQ120101', 'GOQ120102', 'GOQ120103');"
+            //t_kpi_sql_st_relation
+            //t_kpi_sql_module
+            //t_kpi_sql_source
+            //t_kpi_sql_algorithm
+        })
+    });
+    /**
+     * 替换字符串中的定位符（${num}）
+     * 参数：要替换的目标值
+     * @type {function(): String}
+     */
+    String.prototype.format = String.prototype.f = function () {
+        var s = this,
+            i = arguments.length;
+
+        while (i--) {
+            s = s.replaceAll(new RegExp('\\{' + i + '\\}', 'gm'), arguments[i]);
+        }
+        return s;
+    };
+</script>
